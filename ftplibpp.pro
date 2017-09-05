@@ -4,9 +4,11 @@
 
 TEMPLATE = lib
 TARGET = ftplibpp
-INCLUDEPATH += $$PWD\..\openssl\include
+INCLUDEPATH += .
+LIBS += -L$$PWD/lib -lssl -lcrypto
+win32: LIBS += -lws2_32
 
 # Input
 HEADERS += ftplib.h
 SOURCES += ftplib.cpp
-DEFINES += NOLFS NOSSL
+DEFINES += NOLFS
