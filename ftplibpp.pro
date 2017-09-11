@@ -5,10 +5,15 @@
 TEMPLATE = lib
 TARGET = ftplibpp
 INCLUDEPATH += .
-LIBS += -L$$PWD/lib -lssl -lcrypto
+LIBS += -lssl -lcrypto
 win32: LIBS += -lws2_32
 
 # Input
 HEADERS += ftplib.h
 SOURCES += ftplib.cpp
-DEFINES += NOLFS
+win32: DEFINES += NOLFS
+
+!isEmpty(SSL_PATH) {
+    LIBS += -L$$SSL_PATH/lib
+    INCLUDEPATH += $$SSL_PATH/include
+}
