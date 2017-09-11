@@ -11,7 +11,7 @@ win32: LIBS += -lws2_32
 # Input
 HEADERS += ftplib.h
 SOURCES += ftplib.cpp
-win32: DEFINES += NOLFS
+android: DEFINES += NOLFS
 
 !isEmpty(SSL_PATH) {
     LIBS += -L$$SSL_PATH/lib
