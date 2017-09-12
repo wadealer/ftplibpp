@@ -13,6 +13,8 @@ HEADERS += ftplib.h
 SOURCES += ftplib.cpp
 android: DEFINES += NOLFS
 
+DEFINES += BUILDING_DLL
+
 !isEmpty(SSL_PATH) {
     LIBS += -L$$SSL_PATH/lib
     INCLUDEPATH += $$SSL_PATH/include
