@@ -206,6 +206,8 @@ private:
     int readline(char *buf,int max,ftphandle *ctl);
     int writeline(char *buf, int len, ftphandle *nData);
     int readresp(char c, ftphandle *nControl);
+    int DoSocketWrite(void *buf, int len, ftphandle *handle);
+    int DoSocketRead(void *buf, int len, ftphandle *handle);
 	
     void ClearHandle();
     int CorrectPasvResponse(unsigned char *v);

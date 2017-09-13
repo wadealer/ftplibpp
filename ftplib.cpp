@@ -93,17 +93,17 @@ BOOL APIENTRY DllMain (HINSTANCE hInst, DWORD reason, LPVOID reserved)
 
 ftplib::ftplib()
 {
-    #if defined(_WIN32)
+#if defined(_WIN32)
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(1, 1), &wsa))
     {
          printf("WSAStartup() failed, %lu\n", (unsigned long)GetLastError());
     }
-    #endif
+#endif
                 
-	#ifndef NOSSL
+#ifndef NOSSL
 	SSL_library_init();
-	#endif	
+#endif
 
 	mp_ftphandle = static_cast<ftphandle *>(calloc(1,sizeof(ftphandle)));
 	if (mp_ftphandle == NULL) perror("calloc");
@@ -113,11 +113,11 @@ ftplib::ftplib()
 		perror("calloc");
 		free(mp_ftphandle);
 	}
-	#ifndef NOSSL
+#ifndef NOSSL
 	mp_ftphandle->ctx = SSL_CTX_new(_FTPLIB_SSL_CLIENT_METHOD_());
 	SSL_CTX_set_verify(mp_ftphandle->ctx, SSL_VERIFY_NONE, NULL);
 	mp_ftphandle->ssl = SSL_new(mp_ftphandle->ctx);
-	#endif
+#endif
 	ClearHandle();
 }
 
@@ -127,10 +127,10 @@ ftplib::ftplib()
 
 ftplib::~ftplib()
 {
-	#ifndef NOSSL
+#ifndef NOSSL
 	SSL_free(mp_ftphandle->ssl);
 	SSL_CTX_free(mp_ftphandle->ctx);
-	#endif
+#endif
 	free(mp_ftphandle->buf);
 	free(mp_ftphandle);
 }
@@ -240,17 +240,8 @@ int ftplib::readline(char *buf,int max,ftphandle *ctl)
 		}
 
 		if (!socket_wait(ctl)) return retval;
+		x = DoSocketRead(ctl->cput, ctl->cleft, ctl);
 
-#ifndef NOSSL
-		if (ctl->tlsdata) x = SSL_read(ctl->ssl, ctl->cput, ctl->cleft);
-		else
-		{
-			if (ctl->tlsctrl) x = SSL_read(ctl->ssl, ctl->cput, ctl->cleft);
-			else x = net_read(ctl->handle,ctl->cput,ctl->cleft);
-		}
-#else
-		x = net_read(ctl->handle,ctl->cput,ctl->cleft);		
-#endif
 		if ( x == -1)
 		{
 			perror("read");
@@ -295,12 +286,8 @@ int ftplib::writeline(char *buf, int len, ftphandle *nData)
 			if (nb == FTPLIB_BUFSIZ)
 			{
 				if (!socket_wait(nData)) return x;
-#ifndef NOSSL
-				if (nData->tlsctrl) w = SSL_write(nData->ssl, nbp, FTPLIB_BUFSIZ);
-				else w = net_write(nData->handle, nbp, FTPLIB_BUFSIZ);
-#else
-				w = net_write(nData->handle, nbp, FTPLIB_BUFSIZ);
-#endif
+				w = DoSocketWrite(nbp, FTPLIB_BUFSIZ, nData);
+
 				if (w != FTPLIB_BUFSIZ)
 				{
 					printf("write(1) returned %d, errno = %d\n", w, errno);
@@ -314,12 +301,8 @@ int ftplib::writeline(char *buf, int len, ftphandle *nData)
 		{
 			if (!socket_wait(nData))
 			return x;
-#ifndef NOSSL
-			if (nData->tlsctrl) w = SSL_write(nData->ssl, nbp, FTPLIB_BUFSIZ);
-			else w = net_write(nData->handle, nbp, FTPLIB_BUFSIZ);
-#else
-			w = net_write(nData->handle, nbp, FTPLIB_BUFSIZ);
-#endif	
+			w = DoSocketWrite(nbp, FTPLIB_BUFSIZ, nData);
+
 			if (w != FTPLIB_BUFSIZ)
 			{
 				printf("write(2) returned %d, errno = %d\n", w, errno);
@@ -332,12 +315,8 @@ int ftplib::writeline(char *buf, int len, ftphandle *nData)
 	if (nb)
 	{
 		if (!socket_wait(nData)) return x;
-#ifndef NOSSL
-		if (nData->tlsctrl) w = SSL_write(nData->ssl, nbp, nb);
-		else w = net_write(nData->handle, nbp, nb);
-#else
-		w = net_write(nData->handle, nbp, nb);	
-#endif
+		w = DoSocketWrite(nbp, nb, nData);
+
 		if (w != nb)
 		{
 			printf("write(3) returned %d, errno = %d\n", w, errno);
@@ -379,6 +358,24 @@ int ftplib::readresp(char c, ftphandle *nControl)
 	}
 	if (nControl->response[0] == c) return 1;
 	return 0;
+}
+
+int ftplib::DoSocketWrite(void *buf, int len, ftphandle *handle)
+{
+#ifndef NOSSL
+	if (handle->tlsctrl || handle->tlsdata)
+		return SSL_write(handle->ssl, buf, len);
+#endif
+	return net_write(handle->handle, buf, len);
+}
+
+int ftplib::DoSocketRead(void *buf, int len, ftphandle *handle)
+{
+#ifndef NOSSL
+	if (handle->tlsctrl || handle->tlsdata)
+		return SSL_read(handle->ssl, buf, len);
+#endif
+	return net_read(handle->handle, buf, len);
 }
 
 /*
@@ -690,6 +687,8 @@ int ftplib::FtpAccess(const char *path, accesstype type, transfermode mode, ftph
 		(*nData)->ssl = SSL_new(nControl->ctx);
 		(*nData)->sbio = BIO_new_socket((*nData)->handle, BIO_NOCLOSE);
 		SSL_set_bio((*nData)->ssl,(*nData)->sbio,(*nData)->sbio);
+		SSL_SESSION* ses = SSL_get_session(nControl->ssl);
+		SSL_set_session((*nData)->ssl, ses);
 		ret = SSL_connect((*nData)->ssl);
 		if (ret != 1) return 0;
 		(*nData)->tlsdata = 1;
@@ -912,6 +911,7 @@ int ftplib::FtpOpenPasv(ftphandle *nControl, ftphandle **nData, transfermode mod
 	}
 
 	if (nControl->dir != FTPLIB_CONTROL) return -1;
+
 	sprintf(cmd,"%s\r\n",cmd);
 #ifndef NOSSL
 	if (nControl->tlsctrl) ret = SSL_write(nControl->ssl,cmd,strlen(cmd));
@@ -919,6 +919,7 @@ int ftplib::FtpOpenPasv(ftphandle *nControl, ftphandle **nData, transfermode mod
 #else
 	ret = net_write(nControl->handle,cmd,strlen(cmd));
 #endif
+	if (mp_ftphandle->logcb != NULL) mp_ftphandle->logcb(cmd, mp_ftphandle->cbarg, false);
 	if (ret <= 0)
 	{
 		perror("write");
@@ -931,6 +932,7 @@ int ftplib::FtpOpenPasv(ftphandle *nControl, ftphandle **nData, transfermode mod
 		net_close(sData);
 		return -1;
 	}
+
 	if (!readresp('1', nControl))
 	{
 		net_close(sData);
@@ -950,6 +952,7 @@ int ftplib::FtpOpenPasv(ftphandle *nControl, ftphandle **nData, transfermode mod
 		free(ctrl);
 		return -1;
 	}
+
 	ctrl->handle = sData;
 	ctrl->dir = dir;
 	ctrl->ctrl = (nControl->cmode == ftplib::pasv) ? nControl : NULL;
@@ -980,13 +983,23 @@ int ftplib::FtpClose(ftphandle *nData)
 	}
 	else if (nData->dir != FTPLIB_READ) return 0;
 	if (nData->buf) free(nData->buf);
+
+#ifndef NOSSL
+	if(nData->tlsdata) {
+		int shutdownState = SSL_get_shutdown(nData->ssl);
+		bool shutdownSent = (shutdownState & SSL_SENT_SHUTDOWN) == SSL_SENT_SHUTDOWN;
+		if (!shutdownSent) {
+			if (SSL_shutdown(nData->ssl) == 0) //according to documentation
+				SSL_shutdown(nData->ssl);
+		}
+		SSL_free(nData->ssl);
+	}
+#endif
 	shutdown(nData->handle,2);
 	net_close(nData->handle);
 
+
 	ctrl = nData->ctrl;
-#ifndef NOSSL
-	SSL_free(nData->ssl);
-#endif
 	free(nData);
 	if (ctrl) return readresp('2', ctrl);
 	return 1;
@@ -1006,14 +1019,9 @@ int ftplib::FtpRead(void *buf, int max, ftphandle *nData)
 	{
 		i = socket_wait(nData);
 		if (i != 1) return 0;
-#ifndef NOSSL
-		if (nData->tlsdata) i = SSL_read(nData->ssl, buf, max);
-		else i = net_read(nData->handle,buf,max);
-#else
-		i = net_read(nData->handle,buf,max);
-#endif
+		i = DoSocketRead(buf, max, nData);
 	}
-	if (i == -1) return 0;
+	if (i < 0) return 0;
 	nData->xfered += i;
 	if (nData->xfercb && nData->cbbytes)
 	{
@@ -1039,12 +1047,7 @@ int ftplib::FtpWrite(void *buf, int len, ftphandle *nData)
 	else
 	{
 		socket_wait(nData);
-#ifndef NOSSL
-		if (nData->tlsdata) i = SSL_write(nData->ssl, buf, len);
-		else i = net_write(nData->handle, buf, len);
-#else
-		i = net_write(nData->handle, buf, len);
-#endif
+		i = DoSocketWrite(buf, len, nData);
 	}
 	if (i == -1) return 0;
 	nData->xfered += i;
